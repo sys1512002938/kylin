@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:context="http://www.springframework.org/schema/context"
+	xmlns:batch="http://www.springframework.org/schema/batch" xmlns:jdbc="http://www.springframework.org/schema/jdbc"
+	xmlns:tx="http://www.springframework.org/schema/tx" xmlns:aop="http://www.springframework.org/schema/aop"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
+                http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context.xsd
+                http://www.springframework.org/schema/batch http://www.springframework.org/schema/batch/spring-batch.xsd
+                http://www.springframework.org/schema/jdbc http://www.springframework.org/schema/jdbc/spring-jdbc.xsd
+                http://www.springframework.org/schema/tx http://www.springframework.org/schema/tx/spring-tx.xsd
+				http://www.springframework.org/schema/aop http://www.springframework.org/schema/aop/spring-aop.xsd">
+	<context:annotation-config />
+	<!-- Component scan to find all Spring components -->
+	<context:component-scan base-package="com.pcitc.smc.csv" />
+
+	<!-- spring的属性加载器，加载properties文件中的属性 -->  
+	<bean id="propertyConfigurer"  
+	    class="org.springframework.beans.factory.config.PropertyPlaceholderConfigurer">  
+	    <property name="location">  
+	        <value>file:${user.dir}/conf/jdbc.properties</value>  
+	    </property> 
+	    <property name="fileEncoding" value="utf-8" />  
+	</bean>
+	<!-- Data source - connect to a MySQL instance running on the local machine -->
+	<bean id="dataSource" class="org.apache.commons.dbcp.BasicDataSource"
+		destroy-method="close">
+		<property name="driverClassName" value="${jdbc.driver}" />
+		<property name="url" value="${jdbc.url}" />
+		<property name="username" value="${jdbc.username}" />
+		<property name="password" value="${jdbc.password}" />
+		<!-- 初始化连接大小 -->
+		<property name="initialSize" value="0" />
+		<!-- 连接池最大使用连接数量 -->
+		<property name="maxActive" value="20" />
+		<!-- 连接池最大空闲 -->
+		<property name="maxIdle" value="20" />
+		<!-- 连接池最小空闲 -->
+		<property name="minIdle" value="0" />
+		<!-- 获取连接最大等待时间 -->
+		<property name="maxWait" value="60000" />
+	</bean>
+
+	<!-- spring和MyBatis完美整合，不需要mybatis的配置映射文件 -->
+	<bean id="sqlSessionFactory" class="org.mybatis.spring.SqlSessionFactoryBean">
+		<property name="dataSource" ref="dataSource" />
+		<!-- 自动扫描mapping.xml文件 -->
+		<property name="mapperLocations" value="classpath:com/pcitc/smc/csv/mapping/*.xml"></property>
+	</bean>
+
+	<bean class="org.mybatis.spring.mapper.MapperScannerConfigurer">
+		<property name="basePackage" value="com.pcitc.smc.csv.dao"></property>
+	</bean>
+
+	<bean id="transactionManager"
+		class="org.springframework.jdbc.datasource.DataSourceTransactionManager">
+		<property name="dataSource" ref="dataSource" />
+	</bean>
+
+	<!-- 拦截器方式配置事物 -->
+	<tx:advice id="transactionAdvice" transaction-manager="transactionManager">
+		<tx:attributes>
+			<tx:method name="add*" propagation="REQUIRED" />
+			<tx:method name="append*" propagation="REQUIRED" />
+			<tx:method name="insert*" propagation="REQUIRED" />
+			<tx:method name="save*" propagation="REQUIRED" />
+			<tx:method name="update*" propagation="REQUIRED" />
+			<tx:method name="modify*" propagation="REQUIRED" />
+			<tx:method name="edit*" propagation="REQUIRED" />
+			<tx:method name="delete*" propagation="REQUIRED" />
+			<tx:method name="remove*" propagation="REQUIRED" />
+			<tx:method name="repair" propagation="REQUIRED" />
+			<tx:method name="delAndRepair" propagation="REQUIRED" />
+
+			<tx:method name="get*" propagation="SUPPORTS" />
+			<tx:method name="find*" propagation="SUPPORTS" />
+			<tx:method name="load*" propagation="SUPPORTS" />
+			<tx:method name="search*" propagation="SUPPORTS" />
+			<tx:method name="datagrid*" propagation="SUPPORTS" />
+
+			<tx:method name="*" propagation="SUPPORTS" />
+		</tx:attributes>
+	</tx:advice>
+	<aop:config>
+		<aop:pointcut id="transactionPointcut"
+			expression="execution(* com.pcitc.**.service..*Impl.*(..))" />
+		<aop:advisor pointcut-ref="transactionPointcut"
+			advice-ref="transactionAdvice" />
+	</aop:config>
+	<!-- create job-meta tables automatically -->
+
+	<!-- <jdbc:initialize-database data-source="dataSource">
+		<jdbc:script location="org/springframework/batch/core/schema-oracle10g.sql" />
+		<jdbc:script
+			location="org/springframework/batch/core/schema-drop-oracle10g.sql" />
+	</jdbc:initialize-database> -->
+
+	<!-- Job Repository: used to persist the state of the batch job -->
+	<bean id="jobRepository"
+		class="org.springframework.batch.core.repository.support.MapJobRepositoryFactoryBean">
+		<property name="transactionManager" ref="transactionManager" />
+	</bean>
+	<!-- Job Launcher: creates the job and the job state before launching it -->
+	<bean id="jobLauncher"
+		class="org.springframework.batch.core.launch.support.SimpleJobLauncher">
+		<property name="jobRepository" ref="jobRepository" />
+	</bean>
+	<!-- Reader bean for our simple CSV example -->
+	<bean id="eventReader" class="org.springframework.batch.item.file.FlatFileItemReader"
+		scope="step">
+		<!-- <property name="resource" value="file:./sample.csv" /> -->
+		<property name="resource" value="file:#{jobParameters['inputSrcFile']}" />
+		<!-- Skip the first line of the file because this is the header that defines 
+			the fields -->
+		<!-- <property name="linesToSkip" value="1" /> -->
+		<!-- Defines how we map lines to objects -->
+		<property name="lineMapper">
+			<bean class="org.springframework.batch.item.file.mapping.DefaultLineMapper">
+				<!-- The lineTokenizer divides individual lines up into units of work -->
+				<property name="lineTokenizer">
+					<bean
+						class="org.springframework.batch.item.file.transform.DelimitedLineTokenizer">
+						<!-- Names of the CSV columns -->
+						<property name="names"
+							value="#event.eventId,event.baseEventIds,event.name,event.message,event.type,event.endTime,event.applicationProtocol,event.transportProtocol,event.bytesIn,event.bytesOut,event.customer,event.customerName,event.startTime,event.managerReceiptTime,event.categorySignificance,event.categoryTechnique,event.categoryBehavior,event.categoryDeviceGroup,event.categoryObject,event.categoryOutcome,event.fileName,event.filePath,event.requestCookies,event.requestMethod,event.requestProtocol,event.requestUrl,event.requestUrlFileName,event.requestUrlPort,event.requestUrlHost,event.requestUrlQuery,event.requestContext,event.sourceAddress,event.sourceAssetName,event.sourceHostName,event.sourceMacAddress,event.sourcePort,event.sourceProcessName,event.sourceServiceName,event.sourceTranslatedAddress,event.sourceTranslatedPort,event.sourceUserId,event.sourceUserName,event.sourceZoneName,event.sourceGeoCountryName,event.sourceGeoLocationInfo,event.targetAddress,event.targetAssetName,event.targetHostName,event.targetMacAddress,event.targetPort,event.targetProcessName,event.targetServiceName,event.targetTranslatedAddress,event.targetTranslatedPort,event.targetUserId,event.targetUserName,event.targetZoneName,event.targetGeoCountryName,event.targetGeoLocationInfo,event.assetCriticality,event.modelConfidence,event.priority,event.relevance,event.severity,event.deviceCustomString1,event.deviceCustomString2,event.deviceCustomString3,event.deviceCustomString4,event.deviceCustomString5,event.deviceCustomString6,event.deviceCustomNumber1,event.deviceCustomNumber2,event.deviceCustomNumber3,event.deviceCustomDate1,event.deviceCustomDate2,event.deviceAction,event.deviceAddress,event.deviceAssetId,event.deviceAssetName,event.deviceDirection,event.deviceDomain,event.deviceEventCategory,event.deviceEventClassId,event.deviceFacility,event.deviceHostName,event.deviceInboundInterface,event.deviceOutboundInterface,event.deviceProcessId,event.deviceProcessName,event.deviceProduct,event.deviceReceiptTime,event.deviceSeverity,event.deviceTranslatedAddress,event.deviceVendor,event.deviceZone,event.deviceZoneName,event.agentAddress,event.agentHostName,event.agentName,event.agentReceiptTime,event.agentSeverity" />
+					</bean>
+				</property>
+				<!-- The fieldSetMapper maps a line in the file to a Product object -->
+				<property name="fieldSetMapper">
+					<bean class="com.pcitc.smc.csv.reader.ESMEventFieldSetMapper" />
+				</property>
+			</bean>
+		</property>
+	</bean>
+	<bean id="eventWriter" class="com.pcitc.smc.csv.writer.ESMEventWriter" />
+	<bean id="stepListener" class="com.pcitc.smc.csv.listener.FileReNameStepListener"/>
+</beans>

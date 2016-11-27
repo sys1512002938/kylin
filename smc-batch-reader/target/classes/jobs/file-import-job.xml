@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:context="http://www.springframework.org/schema/context"
+	xmlns:batch="http://www.springframework.org/schema/batch"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
+                http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context.xsd
+                http://www.springframework.org/schema/batch http://www.springframework.org/schema/batch/spring-batch.xsd">
+
+
+	<!-- Import our beans -->
+	<import resource="classpath:/applicationContext.xml" />
+
+	<job id="simpleFileImportJob" xmlns="http://www.springframework.org/schema/batch">
+		<step id="importFileStep">
+			<tasklet>
+				<chunk reader="eventReader" writer="eventWriter" processor="handerEventCSV"
+					commit-interval="2" />
+				<!-- <chunk reader="eventReader" writer="eventWriter" commit-interval="2" 
+					/> -->
+			</tasklet>
+			<listeners>
+				<listener ref="stepListener" />
+			</listeners>
+		</step>
+	</job>
+	<bean id="handerEventCSV" class="com.pcitc.smc.csv.processor.HanderEventCsv"></bean>
+</beans>

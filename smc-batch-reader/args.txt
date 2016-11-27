@@ -1,0 +1,1 @@
+classpath:/jobs/file-import-job.xml simpleFileImportJob inputDir=e:/test-classes/ logSize=5 delete=false sort=asc
